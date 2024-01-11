@@ -22,7 +22,7 @@ go build -buildmode pie -compiler gc -tags="rpm_crashtraceback libtrust_openssl 
 
 Epoch: 1
 Name: %{repo}
-Version: 1.1.4
+Version: 1.1.9
 Release: 1%{?dist}
 Summary: CLI for running Open Containers
 # https://fedoraproject.org/wiki/PackagingDrafts/Go#Go_Language_Architectures
@@ -85,6 +85,35 @@ make install install-man install-bash DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} 
 %{_datadir}/bash-completion/completions/%{name}
 
 %changelog
+* Fri Aug 11 2023 Jindrich Novy <jnovy@redhat.com> - 1:1.1.9-1
+- update to https://github.com/opencontainers/runc/releases/tag/v1.1.9
+- Related: #2176055
+
+* Fri Jul 21 2023 Jindrich Novy <jnovy@redhat.com> - 1:1.1.8-1
+- update to https://github.com/opencontainers/runc/releases/tag/v1.1.8
+- Related: #2176055
+
+* Fri Jun 16 2023 Jindrich Novy <jnovy@redhat.com> - 1:1.1.7-2
+- rebuild for following CVEs:
+CVE-2022-41724
+- Resolves: #2179972
+
+* Wed May 03 2023 Jindrich Novy <jnovy@redhat.com> - 1:1.1.7-1
+- update to https://github.com/opencontainers/runc/releases/tag/v1.1.7
+- Related: #2176055
+
+* Wed Apr 12 2023 Jindrich Novy <jnovy@redhat.com> - 1:1.1.6-1
+- update to https://github.com/opencontainers/runc/releases/tag/v1.1.6
+- Related: #2176055
+
+* Fri Mar 31 2023 Jindrich Novy <jnovy@redhat.com> - 1:1.1.5-1
+- update to https://github.com/opencontainers/runc/releases/tag/v1.1.5
+- Related: #2176055
+
+* Thu Mar 09 2023 Jindrich Novy <jnovy@redhat.com> - 1:1.1.4-2
+- update to https://github.com/opencontainers/runc/releases/tag/v1.1.4
+- Related: #2176055
+
 * Fri Aug 26 2022 Jindrich Novy <jnovy@redhat.com> - 1:1.1.4-1
 - update to https://github.com/opencontainers/runc/releases/tag/v1.1.4
 - Related: #2061390
