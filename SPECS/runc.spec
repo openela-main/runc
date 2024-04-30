@@ -20,7 +20,7 @@ go build -buildmode pie -compiler gc -tags="rpm_crashtraceback libtrust_openssl 
 Epoch: 4
 Name: %{repo}
 Version: 1.1.12
-Release: 1%{?dist}
+Release: 2%{?dist}
 Summary: CLI for running Open Containers
 # https://fedoraproject.org/wiki/PackagingDrafts/Go#Go_Language_Architectures
 #ExclusiveArch: %%{go_arches}
@@ -35,8 +35,10 @@ BuildRequires: golang >= 1.20.10
 BuildRequires: git
 BuildRequires: /usr/bin/go-md2man
 BuildRequires: libseccomp-devel >= 2.5
+BuildRequires: container-selinux >= 2.224.0
 Requires: libseccomp >= 2.5
-Requires: criu
+Recommends: criu
+Requires: container-selinux >= 2.224.0
 
 %description
 The runc command can be used to start containers which are packaged
@@ -58,7 +60,7 @@ pushd GOPATH/src/%{import_path}
 export GO111MODULE=off
 export GOPATH=%{gopath}:$(pwd)/GOPATH
 export CGO_CFLAGS="%{optflags} -D_GNU_SOURCE -D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64"
-export BUILDTAGS="selinux seccomp"
+export BUILDTAGS="selinux seccomp runc_dmz_selinux_nocompat"
 export LDFLAGS="-X main.gitCommit= -X main.version=%{version}"
 %gobuild -o %{name} %{import_path}
 
@@ -82,15 +84,30 @@ make install install-man install-bash DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} 
 %{_datadir}/bash-completion/completions/%{name}
 
 %changelog
+* Fri Feb 16 2024 Jindrich Novy <jnovy@redhat.com> - 4:1.1.12-2
+- Switch dependency on criu to Recommends
+- Resolves: RHEL-25116
+
 * Thu Feb 01 2024 Jindrich Novy <jnovy@redhat.com> - 4:1.1.12-1
 - update to https://github.com/opencontainers/runc/releases/tag/v1.1.12
-- fixes CVE-2024-21626
-- Resolves: RHEL-23596
+- Related: RHEL-2112
 
-* Sat Dec 02 2023 Lokesh Mandvekar <lsm5@redhat.com> - 4:1.1.9-2
+* Tue Jan 02 2024 Jindrich Novy <jnovy@redhat.com> - 4:1.1.11-1
+- update to https://github.com/opencontainers/runc/releases/tag/v1.1.11
+- Related: RHEL-2112
+
+* Sat Dec 02 2023 Lokesh Mandvekar <lsm5@redhat.com> - 4:1.1.10-3
 - Rebuild for CVEs: CVE-2023-39321 CVE-2023-39322 CVE-2023-29409
 - Related: Jira:RHEL-2792
 - Related: Jira:RHEL-7454
+
+* Fri Nov 03 2023 Jindrich Novy <jnovy@redhat.com> - 4:1.1.10-2
+- require container-selinux >= 2.224.0 for dmz feature
+- Related: Jira:RHEL-2112
+
+* Wed Nov 01 2023 Jindrich Novy <jnovy@redhat.com> - 4:1.1.10-1
+- update to https://github.com/opencontainers/runc/releases/tag/v1.1.10
+- Related: RHEL-2112
 
 * Fri Aug 11 2023 Jindrich Novy <jnovy@redhat.com> - 4:1.1.9-1
 - update to https://github.com/opencontainers/runc/releases/tag/v1.1.9
