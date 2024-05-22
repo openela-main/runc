@@ -34,12 +34,14 @@ License: ASL 2.0
 URL: %{git0}
 Source0: %{git0}/archive/v%{version}.tar.gz
 Provides: oci-runtime
-BuildRequires: golang >= 1.20.6
+BuildRequires: golang >= 1.17.7
 BuildRequires: git
 BuildRequires: /usr/bin/go-md2man
 BuildRequires: libseccomp-devel >= 2.5
+BuildRequires: container-selinux >= 2.224.0
 Requires: libseccomp >= 2.5
 Requires: criu
+Requires: container-selinux >= 2.224.0
 
 %description
 The runc command can be used to start containers which are packaged
@@ -61,7 +63,7 @@ pushd GOPATH/src/%{import_path}
 export GO111MODULE=off
 export GOPATH=%{gopath}:$(pwd)/GOPATH
 export CGO_CFLAGS="%{optflags} -D_GNU_SOURCE -D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64"
-export BUILDTAGS="selinux seccomp"
+export BUILDTAGS="selinux seccomp runc_dmz_selinux_nocompat"
 export LDFLAGS="-X main.gitCommit= -X main.version=%{version}"
 %gobuild -o %{name} %{import_path}
 
@@ -87,16 +89,16 @@ make install install-man install-bash DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} 
 %changelog
 * Thu Feb 01 2024 Jindrich Novy <jnovy@redhat.com> - 1:1.1.12-1
 - update to https://github.com/opencontainers/runc/releases/tag/v1.1.12
-- fixes CVE-2024-21626
-- Resolves: RHEL-23587
+- Related: Jira:RHEL-2110
 
-* Tue Jan 23 2024 Jindrich Novy <jnovy@redhat.com> - 1:1.1.9-3
-- Make the module buildable again
-- Resolves: RHEL-16299
+* Tue Jan 02 2024 Jindrich Novy <jnovy@redhat.com> - 1:1.1.11-1
+- update to https://github.com/opencontainers/runc/releases/tag/v1.1.11
+- Related: Jira:RHEL-2110
 
-* Mon Dec 04 2023 Lokesh Mandvekar <lsm5@redhat.com> - 1:1.1.9-2
-- Rebuild with golang 1.20.10 for CVE-2023-39321
-- Related: Jira:RHEL-4516
+* Wed Nov 08 2023 Jindrich Novy <jnovy@redhat.com> - 1:1.1.10-1
+- update to https://github.com/opencontainers/runc/releases/tag/v1.1.10
+- require container-selinux >= 2.224.0 for dmz feature
+- Related: Jira:RHEL-2110
 
 * Fri Aug 11 2023 Jindrich Novy <jnovy@redhat.com> - 1:1.1.9-1
 - update to https://github.com/opencontainers/runc/releases/tag/v1.1.9
