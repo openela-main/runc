@@ -38,10 +38,8 @@ BuildRequires: golang >= 1.17.7
 BuildRequires: git
 BuildRequires: /usr/bin/go-md2man
 BuildRequires: libseccomp-devel >= 2.5
-BuildRequires: container-selinux >= 2.224.0
 Requires: libseccomp >= 2.5
 Requires: criu
-Requires: container-selinux >= 2.224.0
 
 %description
 The runc command can be used to start containers which are packaged
@@ -63,7 +61,7 @@ pushd GOPATH/src/%{import_path}
 export GO111MODULE=off
 export GOPATH=%{gopath}:$(pwd)/GOPATH
 export CGO_CFLAGS="%{optflags} -D_GNU_SOURCE -D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64"
-export BUILDTAGS="selinux seccomp runc_dmz_selinux_nocompat"
+export BUILDTAGS="selinux seccomp"
 export LDFLAGS="-X main.gitCommit= -X main.version=%{version}"
 %gobuild -o %{name} %{import_path}
 
