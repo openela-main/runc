@@ -23,7 +23,7 @@ go build -buildmode pie -compiler gc -tags="rpm_crashtraceback libtrust_openssl 
 Epoch: 1
 Name: %{repo}
 Version: 1.1.12
-Release: 4%{?dist}
+Release: 5%{?dist}
 Summary: CLI for running Open Containers
 # https://fedoraproject.org/wiki/PackagingDrafts/Go#Go_Language_Architectures
 #ExclusiveArch: %%{go_arches}
@@ -34,7 +34,7 @@ License: ASL 2.0
 URL: %{git0}
 Source0: %{git0}/archive/v%{version}.tar.gz
 Provides: oci-runtime
-BuildRequires: golang >= 1.17.7
+BuildRequires: golang >= 1.21.4
 BuildRequires: git
 BuildRequires: /usr/bin/go-md2man
 BuildRequires: libseccomp-devel >= 2.5
@@ -61,7 +61,7 @@ pushd GOPATH/src/%{import_path}
 export GO111MODULE=off
 export GOPATH=%{gopath}:$(pwd)/GOPATH
 export CGO_CFLAGS="%{optflags} -D_GNU_SOURCE -D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64"
-export BUILDTAGS="selinux seccomp"
+export BUILDTAGS="selinux seccomp no_openssl"
 export LDFLAGS="-X main.gitCommit= -X main.version=%{version}"
 %gobuild -o %{name} %{import_path}
 
@@ -85,6 +85,11 @@ make install install-man install-bash DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} 
 %{_datadir}/bash-completion/completions/%{name}
 
 %changelog
+* Tue Oct 01 2024 Kir Kolyshkin <kir@redhat.com> - 1:1.1.12-5
+- bump golang buildrequires
+- add no_openssl build tag
+- Resolves RHEL-55757
+
 * Mon Aug 05 2024 Jindrich Novy <jnovy@redhat.com> - 1:1.1.12-4
 - rebuild for  golang fixes
 - Related: RHEL-28452
