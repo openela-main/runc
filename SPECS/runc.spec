@@ -19,7 +19,7 @@ go build -buildmode pie -compiler gc -tags="rpm_crashtraceback libtrust_openssl 
 
 Epoch: 4
 Name: %{repo}
-Version: 1.1.12
+Version: 1.1.13
 Release: 4%{?dist}
 Summary: CLI for running Open Containers
 # https://fedoraproject.org/wiki/PackagingDrafts/Go#Go_Language_Architectures
@@ -31,7 +31,7 @@ License: ASL 2.0
 URL: %{git0}
 Source0: %{git0}/archive/v%{version}.tar.gz
 Provides: oci-runtime
-BuildRequires: golang >= 1.20.10
+BuildRequires: golang >= 1.22.4
 BuildRequires: git
 BuildRequires: /usr/bin/go-md2man
 BuildRequires: libseccomp-devel >= 2.5
@@ -60,7 +60,7 @@ pushd GOPATH/src/%{import_path}
 export GO111MODULE=off
 export GOPATH=%{gopath}:$(pwd)/GOPATH
 export CGO_CFLAGS="%{optflags} -D_GNU_SOURCE -D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64"
-export BUILDTAGS="selinux seccomp runc_dmz_selinux_nocompat"
+export BUILDTAGS="selinux seccomp runc_dmz_selinux_nocompat no_openssl"
 export LDFLAGS="-X main.gitCommit= -X main.version=%{version}"
 %gobuild -o %{name} %{import_path}
 
@@ -84,13 +84,21 @@ make install install-man install-bash DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} 
 %{_datadir}/bash-completion/completions/%{name}
 
 %changelog
-* Tue Jul 23 2024 Jindrich Novy <jnovy@redhat.com> - 4:1.1.12-4
-- rebuild for CVE-2024-24783
-- Resolves: RHEL-28439
+* Mon Jul 15 2024 Jindrich Novy <jnovy@redhat.com> - 4:1.1.13-4
+- rebuild against new golang
+- Resolves: RHEL-46380
 
-* Fri Jun 21 2024 Jindrich Novy <jnovy@redhat.com> - 4:1.1.12-3
-- rebuild for CVE-2024-1394
-- Resolves: RHEL-24320
+* Fri Jul 12 2024 Jindrich Novy <jnovy@redhat.com> - 4:1.1.13-3
+- rebuild against golang-1.22.4
+- Resolves: RHEL-46380
+
+* Mon Jul 08 2024 Jindrich Novy <jnovy@redhat.com> - 4:1.1.13-2
+- rebuild
+- Resolves: RHEL-46380
+
+* Fri Jun 14 2024 Jindrich Novy <jnovy@redhat.com> - 4:1.1.13-1
+- update to https://github.com/opencontainers/runc/releases/tag/v1.1.13
+- Related: RHEL-27608
 
 * Fri Feb 16 2024 Jindrich Novy <jnovy@redhat.com> - 4:1.1.12-2
 - Switch dependency on criu to Recommends
