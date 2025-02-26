@@ -23,7 +23,7 @@ go build -buildmode pie -compiler gc -tags="rpm_crashtraceback libtrust_openssl 
 Epoch: 1
 Name: %{repo}
 Version: 1.1.12
-Release: 5%{?dist}
+Release: 6%{?dist}
 Summary: CLI for running Open Containers
 # https://fedoraproject.org/wiki/PackagingDrafts/Go#Go_Language_Architectures
 #ExclusiveArch: %%{go_arches}
@@ -33,6 +33,8 @@ ExcludeArch: %{ix86}
 License: ASL 2.0
 URL: %{git0}
 Source0: %{git0}/archive/v%{version}.tar.gz
+Patch0: 0001-1.1-Bump-runtime-spec-to-latest-git-HEAD.patch
+Patch1: 0002-1.1-runc-exec-implement-CPU-affinity.patch
 Provides: oci-runtime
 BuildRequires: golang >= 1.21.4
 BuildRequires: git
@@ -85,6 +87,10 @@ make install install-man install-bash DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} 
 %{_datadir}/bash-completion/completions/%{name}
 
 %changelog
+* Mon Jan 20 2025 Jindrich Novy <jnovy@redhat.com> - 1:1.1.12-6
+- Add CPU affinity feature from Kir Kolishkin
+- Resolves: RHEL-74865
+
 * Tue Oct 01 2024 Kir Kolyshkin <kir@redhat.com> - 1:1.1.12-5
 - bump golang buildrequires
 - add no_openssl build tag
