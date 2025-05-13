@@ -1,0 +1,521 @@
+From 73786942b7176eae1e676cf2f78af548f090e418 Mon Sep 17 00:00:00 2001
+From: Kir Kolyshkin <kolyshkin@gmail.com>
+Date: Mon, 21 Oct 2024 15:50:38 -0700
+Subject: [PATCH 2/2] runc exec: implement CPU affinity
+
+As per
+- https://github.com/opencontainers/runtime-spec/pull/1253
+- https://github.com/opencontainers/runtime-spec/pull/1261
+
+CPU affinity can be set in two ways:
+1. When creating/starting a container, in config.json's
+   Process.ExecCPUAffinity, which is when applied to all execs.
+2. When running an exec, in process.json's CPUAffinity, which
+   applied to a given exec and overrides the value from (1).
+
+Add some basic tests.
+
+Note that older kernels (RHEL8, Ubuntu 20.04) change CPU affinity of a
+process to that of a container's cgroup, as soon as it is moved to that
+cgroup, while newer kernels (Ubuntu 24.04, Fedora 41) don't do that.
+
+Because of the above,
+ - it's impossible to really test initial CPU affinity without adding
+   debug logging to libcontainer/nsenter;
+ - for older kernels, there can be a brief moment when exec's affinity
+   is different than either initial or final affinity being set;
+ - exec's final CPU affinity, if not specified, can be different
+   depending on the kernel, therefore we don't test it.
+
+Signed-off-by: Kir Kolyshkin <kolyshkin@gmail.com>
+(cherry picked from commit 57237b31de367a722c5d49088912d57c28c6fb46)
+Signed-off-by: Kir Kolyshkin <kolyshkin@gmail.com>
+---
+ libcontainer/configs/config.go      |  72 ++++++++++++++++++++
+ libcontainer/container_linux.go     |   4 ++
+ libcontainer/init_linux.go          |   3 +-
+ libcontainer/nsenter/log.c          |   9 ++-
+ libcontainer/nsenter/log.h          |   3 +
+ libcontainer/nsenter/nsexec.c       |  29 ++++++++
+ libcontainer/process.go             |   2 +
+ libcontainer/process_linux.go       |  49 +++++++++++++-
+ libcontainer/specconv/spec_linux.go |   5 ++
+ tests/integration/cpu_affinity.bats | 101 ++++++++++++++++++++++++++++
+ utils_linux.go                      |   6 ++
+ 11 files changed, 277 insertions(+), 6 deletions(-)
+ create mode 100644 tests/integration/cpu_affinity.bats
+
+diff --git a/libcontainer/configs/config.go b/libcontainer/configs/config.go
+index 22fe0f9b..daffd130 100644
+--- a/libcontainer/configs/config.go
++++ b/libcontainer/configs/config.go
+@@ -3,8 +3,11 @@ package configs
+ import (
+ 	"bytes"
+ 	"encoding/json"
++	"errors"
+ 	"fmt"
+ 	"os/exec"
++	"strconv"
++	"strings"
+ 	"time"
+ 
+ 	"github.com/sirupsen/logrus"
+@@ -225,6 +228,9 @@ type Config struct {
+ 
+ 	// IOPriority is the container's I/O priority.
+ 	IOPriority *IOPriority `json:"io_priority,omitempty"`
++
++	// ExecCPUAffinity is CPU affinity for a non-init process to be run in the container.
++	ExecCPUAffinity *CPUAffinity `json:"exec_cpu_affinity,omitempty"`
+ }
+ 
+ // Scheduler is based on the Linux sched_setattr(2) syscall.
+@@ -294,6 +300,72 @@ var IOPrioClassMapping = map[specs.IOPriorityClass]int{
+ 
+ type IOPriority = specs.LinuxIOPriority
+ 
++type CPUAffinity struct {
++	Initial, Final *unix.CPUSet
++}
++
++func toCPUSet(str string) (*unix.CPUSet, error) {
++	if str == "" {
++		return nil, nil
++	}
++	s := new(unix.CPUSet)
++	for _, r := range strings.Split(str, ",") {
++		// Allow extra spaces around.
++		r = strings.TrimSpace(r)
++		// Allow empty elements (extra commas).
++		if r == "" {
++			continue
++		}
++		if r0, r1, found := strings.Cut(r, "-"); found {
++			start, err := strconv.ParseUint(r0, 10, 32)
++			if err != nil {
++				return nil, err
++			}
++			end, err := strconv.ParseUint(r1, 10, 32)
++			if err != nil {
++				return nil, err
++			}
++			if start > end {
++				return nil, errors.New("invalid range: " + r)
++			}
++			for i := int(start); i <= int(end); i++ {
++				s.Set(i)
++			}
++		} else {
++			val, err := strconv.ParseUint(r, 10, 32)
++			if err != nil {
++				return nil, err
++			}
++			s.Set(int(val))
++		}
++	}
++
++	return s, nil
++}
++
++// ConvertCPUAffinity converts [specs.CPUAffinity] to [CPUAffinity].
++func ConvertCPUAffinity(sa *specs.CPUAffinity) (*CPUAffinity, error) {
++	if sa == nil {
++		return nil, nil
++	}
++	initial, err := toCPUSet(sa.Initial)
++	if err != nil {
++		return nil, fmt.Errorf("bad CPUAffinity.Initial: %w", err)
++	}
++	final, err := toCPUSet(sa.Final)
++	if err != nil {
++		return nil, fmt.Errorf("bad CPUAffinity.Final: %w", err)
++	}
++	if initial == nil && final == nil {
++		return nil, nil
++	}
++
++	return &CPUAffinity{
++		Initial: initial,
++		Final:   final,
++	}, nil
++}
++
+ type (
+ 	HookName string
+ 	HookList []Hook
+diff --git a/libcontainer/container_linux.go b/libcontainer/container_linux.go
+index c0211617..1fc590a5 100644
+--- a/libcontainer/container_linux.go
++++ b/libcontainer/container_linux.go
+@@ -692,6 +692,7 @@ func (c *Container) newInitConfig(process *Process) *initConfig {
+ 		AppArmorProfile:  c.config.AppArmorProfile,
+ 		ProcessLabel:     c.config.ProcessLabel,
+ 		Rlimits:          c.config.Rlimits,
++		CPUAffinity:      c.config.ExecCPUAffinity,
+ 		CreateConsole:    process.ConsoleSocket != nil,
+ 		ConsoleWidth:     process.ConsoleWidth,
+ 		ConsoleHeight:    process.ConsoleHeight,
+@@ -708,6 +709,9 @@ func (c *Container) newInitConfig(process *Process) *initConfig {
+ 	if len(process.Rlimits) > 0 {
+ 		cfg.Rlimits = process.Rlimits
+ 	}
++	if process.CPUAffinity != nil {
++		cfg.CPUAffinity = process.CPUAffinity
++	}
+ 	if cgroups.IsCgroup2UnifiedMode() {
+ 		cfg.Cgroup2Path = c.cgroupManager.Path("")
+ 	}
+diff --git a/libcontainer/init_linux.go b/libcontainer/init_linux.go
+index 1eb0279d..eddbfba6 100644
+--- a/libcontainer/init_linux.go
++++ b/libcontainer/init_linux.go
+@@ -72,6 +72,7 @@ type initConfig struct {
+ 	RootlessCgroups  bool                  `json:"rootless_cgroups,omitempty"`
+ 	SpecState        *specs.State          `json:"spec_state,omitempty"`
+ 	Cgroup2Path      string                `json:"cgroup2_path,omitempty"`
++	CPUAffinity      *configs.CPUAffinity  `json:"cpu_affinity,omitempty"`
+ }
+ 
+ // Init is part of "runc init" implementation.
+@@ -151,7 +152,7 @@ func startInitialization() (retErr error) {
+ 
+ 	logrus.SetOutput(logPipe)
+ 	logrus.SetFormatter(new(logrus.JSONFormatter))
+-	logrus.Debug("child process in init()")
++	logrus.Debugf("child process in init()")
+ 
+ 	// Only init processes have FIFOFD.
+ 	var fifoFile *os.File
+diff --git a/libcontainer/nsenter/log.c b/libcontainer/nsenter/log.c
+index 086b5398..72774cb0 100644
+--- a/libcontainer/nsenter/log.c
++++ b/libcontainer/nsenter/log.c
+@@ -31,6 +31,11 @@ void setup_logpipe(void)
+ 	loglevel = i;
+ }
+ 
++bool log_enabled_for(int level)
++{
++	return (logfd >= 0 && level <= loglevel);
++}
++
+ /* Defined in nsexec.c */
+ extern int current_stage;
+ 
+@@ -40,8 +45,8 @@ void write_log(int level, const char *format, ...)
+ 	va_list args;
+ 	int ret;
+ 
+-	if (logfd < 0 || level > loglevel)
+-		goto out;
++	if (!log_enabled_for(level))
++		return;
+ 
+ 	va_start(args, format);
+ 	ret = vasprintf(&message, format, args);
+diff --git a/libcontainer/nsenter/log.h b/libcontainer/nsenter/log.h
+index 1fe95a11..3e18de68 100644
+--- a/libcontainer/nsenter/log.h
++++ b/libcontainer/nsenter/log.h
+@@ -1,6 +1,7 @@
+ #ifndef NSENTER_LOG_H
+ #define NSENTER_LOG_H
+ 
++#include <stdbool.h>
+ #include <stdio.h>
+ 
+ /*
+@@ -20,6 +21,8 @@
+  */
+ void setup_logpipe(void);
+ 
++bool log_enabled_for(int level);
++
+ void write_log(int level, const char *format, ...) __attribute__((format(printf, 2, 3)));
+ 
+ extern int logfd;
+diff --git a/libcontainer/nsenter/nsexec.c b/libcontainer/nsenter/nsexec.c
+index 565b2ca2..aa4976d6 100644
+--- a/libcontainer/nsenter/nsexec.c
++++ b/libcontainer/nsenter/nsexec.c
+@@ -558,6 +558,25 @@ static void update_timens_offsets(pid_t pid, char *map, size_t map_len)
+ 		bail("failed to update /proc/%d/timens_offsets", pid);
+ }
+ 
++void print_cpu_affinity()
++{
++	cpu_set_t cpus = { };
++	size_t i, mask = 0;
++
++	if (sched_getaffinity(0, sizeof(cpus), &cpus) < 0) {
++		write_log(WARNING, "sched_getaffinity: %m");
++		return;
++	}
++
++	/* Do not print the complete mask, we only need a few first CPUs. */
++	for (i = 0; i < sizeof(mask) * 8; i++) {
++		if (CPU_ISSET(i, &cpus))
++			mask |= 1 << i;
++	}
++
++	write_log(DEBUG, "affinity: 0x%zx", mask);
++}
++
+ void nsexec(void)
+ {
+ 	int pipenum;
+@@ -584,6 +603,16 @@ void nsexec(void)
+ 
+ 	write_log(DEBUG, "=> nsexec container setup");
+ 
++	/* This is for ../../tests/integration/cpu_affinity.bats test only.
++	 *
++	 * Printing this from Go code might be too late as some kernels
++	 * change the process' CPU affinity to that of container's cpuset
++	 * as soon as the process is moved into container's cgroup.
++	 */
++	if (log_enabled_for(DEBUG)) {
++		print_cpu_affinity();
++	}
++
+ 	/* Parse all of the netlink configuration. */
+ 	nl_parse(pipenum, &config);
+ 
+diff --git a/libcontainer/process.go b/libcontainer/process.go
+index 114b3f2b..5339583f 100644
+--- a/libcontainer/process.go
++++ b/libcontainer/process.go
+@@ -102,6 +102,8 @@ type Process struct {
+ 	Scheduler *configs.Scheduler
+ 
+ 	IOPriority *configs.IOPriority
++
++	CPUAffinity *configs.CPUAffinity
+ }
+ 
+ // Wait waits for the process to exit.
+diff --git a/libcontainer/process_linux.go b/libcontainer/process_linux.go
+index fcbb54a3..477c8a77 100644
+--- a/libcontainer/process_linux.go
++++ b/libcontainer/process_linux.go
+@@ -122,6 +122,46 @@ func (p *setnsProcess) signal(sig os.Signal) error {
+ 	return unix.Kill(p.pid(), s)
+ }
+ 
++// Starts setns process with specified initial CPU affinity.
++func (p *setnsProcess) startWithCPUAffinity() error {
++	aff := p.config.CPUAffinity
++	if aff == nil || aff.Initial == nil {
++		return p.cmd.Start()
++	}
++	errCh := make(chan error)
++	defer close(errCh)
++
++	// Use a goroutine to dedicate an OS thread.
++	go func() {
++		runtime.LockOSThread()
++		// Command inherits the CPU affinity.
++		if err := unix.SchedSetaffinity(unix.Gettid(), aff.Initial); err != nil {
++			runtime.UnlockOSThread()
++			errCh <- fmt.Errorf("error setting initial CPU affinity: %w", err)
++			return
++		}
++
++		errCh <- p.cmd.Start()
++		// Deliberately omit runtime.UnlockOSThread here.
++		// https://pkg.go.dev/runtime#LockOSThread says:
++		// "If the calling goroutine exits without unlocking the
++		// thread, the thread will be terminated".
++	}()
++
++	return <-errCh
++}
++
++func (p *setnsProcess) setFinalCPUAffinity() error {
++	aff := p.config.CPUAffinity
++	if aff == nil || aff.Final == nil {
++		return nil
++	}
++	if err := unix.SchedSetaffinity(p.pid(), aff.Final); err != nil {
++		return fmt.Errorf("error setting final CPU affinity: %w", err)
++	}
++	return nil
++}
++
+ func (p *setnsProcess) start() (retErr error) {
+ 	defer p.comm.closeParent()
+ 
+@@ -133,8 +173,8 @@ func (p *setnsProcess) start() (retErr error) {
+ 
+ 	// get the "before" value of oom kill count
+ 	oom, _ := p.manager.OOMKillCount()
+-	err := p.cmd.Start()
+-	// close the child-side of the pipes (controlled by child)
++	err := p.startWithCPUAffinity()
++	// Close the child-side of the pipes (controlled by child).
+ 	p.comm.closeChild()
+ 	if err != nil {
+ 		return fmt.Errorf("error starting setns process: %w", err)
+@@ -184,6 +224,10 @@ func (p *setnsProcess) start() (retErr error) {
+ 			}
+ 		}
+ 	}
++	// Set final CPU affinity right after the process is moved into container's cgroup.
++	if err := p.setFinalCPUAffinity(); err != nil {
++		return err
++	}
+ 	if p.intelRdtPath != "" {
+ 		// if Intel RDT "resource control" filesystem path exists
+ 		_, err := os.Stat(p.intelRdtPath)
+@@ -193,7 +237,6 @@ func (p *setnsProcess) start() (retErr error) {
+ 			}
+ 		}
+ 	}
+-
+ 	if err := utils.WriteJSON(p.comm.initSockParent, p.config); err != nil {
+ 		return fmt.Errorf("error writing config to pipe: %w", err)
+ 	}
+diff --git a/libcontainer/specconv/spec_linux.go b/libcontainer/specconv/spec_linux.go
+index 95ada499..2d0db342 100644
+--- a/libcontainer/specconv/spec_linux.go
++++ b/libcontainer/specconv/spec_linux.go
+@@ -556,6 +556,11 @@ func CreateLibcontainerConfig(opts *CreateOpts) (*configs.Config, error) {
+ 			ioPriority := *spec.Process.IOPriority
+ 			config.IOPriority = &ioPriority
+ 		}
++		config.ExecCPUAffinity, err = configs.ConvertCPUAffinity(spec.Process.ExecCPUAffinity)
++		if err != nil {
++			return nil, err
++		}
++
+ 	}
+ 	createHooks(spec, config)
+ 	config.Version = specs.Version
+diff --git a/tests/integration/cpu_affinity.bats b/tests/integration/cpu_affinity.bats
+new file mode 100644
+index 00000000..f6adfa2a
+--- /dev/null
++++ b/tests/integration/cpu_affinity.bats
+@@ -0,0 +1,101 @@
++#!/usr/bin/env bats
++# Exec CPU affinity tests. For more details, see:
++#  - https://github.com/opencontainers/runtime-spec/pull/1253
++
++load helpers
++
++function setup() {
++	requires smp cgroups_cpuset
++	setup_busybox
++}
++
++function teardown() {
++	teardown_bundle
++}
++
++function first_cpu() {
++	sed 's/[-,].*//g' </sys/devices/system/cpu/online
++}
++
++# Convert list of cpus ("0,1" or "0-1") to mask as printed by nsexec.
++# NOTE the range conversion is not proper, merely sufficient for tests here.
++function cpus_to_mask() {
++	local cpus=$* mask=0
++
++	cpus=${cpus//,/-} # 1. "," --> "-".
++	cpus=${cpus//-/ } # 2. "-" --> " ".
++
++	for c in $cpus; do
++		mask=$((mask | 1 << c))
++	done
++
++	printf "0x%x" $mask
++}
++
++@test "runc exec [CPU affinity, only initial set from process.json]" {
++	first="$(first_cpu)"
++	second=$((first + 1)) # Hacky; might not work in all environments.
++
++	runc run -d --console-socket "$CONSOLE_SOCKET" ct1
++	[ "$status" -eq 0 ]
++
++	for cpus in "$second" "$first-$second" "$first,$second" "$first"; do
++		proc='
++{
++    "terminal": false,
++    "execCPUAffinity": {
++	    "initial": "'$cpus'"
++    },
++    "args": [ "/bin/true" ],
++    "cwd": "/"
++}'
++		mask=$(cpus_to_mask "$cpus")
++		echo "CPUS: $cpus, mask: $mask"
++		runc --debug exec --process <(echo "$proc") ct1
++		[[ "$output" == *"nsexec"*": affinity: $mask"* ]]
++	done
++}
++
++@test "runc exec [CPU affinity, initial and final set from process.json]" {
++	first="$(first_cpu)"
++	second=$((first + 1)) # Hacky; might not work in all environments.
++
++	runc run -d --console-socket "$CONSOLE_SOCKET" ct1
++	[ "$status" -eq 0 ]
++
++	for cpus in "$second" "$first-$second" "$first,$second" "$first"; do
++		proc='
++{
++    "terminal": false,
++    "execCPUAffinity": {
++	    "initial": "'$cpus'",
++	    "final": "'$cpus'"
++    },
++    "args": [ "/bin/grep", "-F", "Cpus_allowed_list:", "/proc/self/status" ],
++    "cwd": "/"
++}'
++		mask=$(cpus_to_mask "$cpus")
++		exp=${cpus//,/-} # "," --> "-".
++		echo "CPUS: $cpus, mask: $mask, final: $exp"
++		runc --debug exec --process <(echo "$proc") ct1
++		[[ "$output" == *"nsexec"*": affinity: $mask"* ]]
++		[[ "$output" == *"Cpus_allowed_list:	$exp"* ]] # Mind the literal tab.
++	done
++}
++
++@test "runc exec [CPU affinity, initial and final set from config.json]" {
++	initial="$(first_cpu)"
++	final=$((initial + 1)) # Hacky; might not work in all environments.
++
++	update_config "	  .process.execCPUAffinity.initial = \"$initial\"
++			| .process.execCPUAffinity.final = \"$final\""
++
++	runc run -d --console-socket "$CONSOLE_SOCKET" ct1
++	[ "$status" -eq 0 ]
++
++	runc --debug exec ct1 grep "Cpus_allowed_list:" /proc/self/status
++	[ "$status" -eq 0 ]
++	mask=$(cpus_to_mask "$initial")
++	[[ "$output" == *"nsexec"*": affinity: $mask"* ]]
++	[[ "$output" == *"Cpus_allowed_list:	$final"* ]] # Mind the literal tab.
++}
+diff --git a/utils_linux.go b/utils_linux.go
+index feb6ef80..013dbcf4 100644
+--- a/utils_linux.go
++++ b/utils_linux.go
+@@ -90,6 +90,12 @@ func newProcess(p specs.Process) (*libcontainer.Process, error) {
+ 		}
+ 		lp.Rlimits = append(lp.Rlimits, rl)
+ 	}
++	aff, err := configs.ConvertCPUAffinity(p.ExecCPUAffinity)
++	if err != nil {
++		return nil, err
++	}
++	lp.CPUAffinity = aff
++
+ 	return lp, nil
+ }
+ 
+-- 
+2.47.1
+

@@ -19,8 +19,8 @@ go build -buildmode pie -compiler gc -tags="rpm_crashtraceback libtrust_openssl 
 
 Epoch: 4
 Name: %{repo}
-Version: 1.1.13
-Release: 4%{?dist}
+Version: 1.2.4
+Release: 2%{?dist}
 Summary: CLI for running Open Containers
 # https://fedoraproject.org/wiki/PackagingDrafts/Go#Go_Language_Architectures
 #ExclusiveArch: %%{go_arches}
@@ -30,6 +30,8 @@ ExcludeArch: %{ix86}
 License: ASL 2.0
 URL: %{git0}
 Source0: %{git0}/archive/v%{version}.tar.gz
+Patch0: 0001-Bump-runtime-spec-to-latest-git-HEAD.patch
+Patch1: 0002-runc-exec-implement-CPU-affinity.patch
 Provides: oci-runtime
 BuildRequires: golang >= 1.22.4
 BuildRequires: git
@@ -84,6 +86,30 @@ make install install-man install-bash DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} 
 %{_datadir}/bash-completion/completions/%{name}
 
 %changelog
+* Fri Jan 24 2025 Jindrich Novy <jnovy@redhat.com> - 4:1.2.4-2
+- Implement CPU affinity patch from Kir Kolishkin
+- Related: RHEL-60277
+
+* Fri Jan 10 2025 Jindrich Novy <jnovy@redhat.com> - 4:1.2.4-1
+- update to https://github.com/opencontainers/runc/releases/tag/v1.2.4
+- Related: RHEL-60277
+
+* Wed Dec 11 2024 Jindrich Novy <jnovy@redhat.com> - 4:1.2.3-1
+- update to https://github.com/opencontainers/runc/releases/tag/v1.2.3
+- Related: RHEL-60277
+
+* Wed Nov 27 2024 Jindrich Novy <jnovy@redhat.com> - 4:1.2.2-1
+- update to https://github.com/opencontainers/runc/releases/tag/v1.2.2
+- Resolves: RHEL-69142
+
+* Tue Oct 08 2024 Jindrich Novy <jnovy@redhat.com> - 4:1.1.15-1
+- update to https://github.com/opencontainers/runc/releases/tag/v1.1.15
+- Related: RHEL-61725
+
+* Wed Sep 04 2024 Jindrich Novy <jnovy@redhat.com> - 4:1.1.14-1
+- update to https://github.com/opencontainers/runc/releases/tag/v1.1.14
+- Related: RHEL-27608
+
 * Mon Jul 15 2024 Jindrich Novy <jnovy@redhat.com> - 4:1.1.13-4
 - rebuild against new golang
 - Resolves: RHEL-46380
