@@ -20,7 +20,7 @@ go build -buildmode pie -compiler gc -tags="rpm_crashtraceback libtrust_openssl 
 Epoch: 4
 Name: %{repo}
 Version: 1.3.0
-Release: 1%{?dist}
+Release: 4%{?dist}
 Summary: CLI for running Open Containers
 # https://fedoraproject.org/wiki/PackagingDrafts/Go#Go_Language_Architectures
 #ExclusiveArch: %%{go_arches}
@@ -30,6 +30,9 @@ ExcludeArch: %{ix86}
 License: ASL 2.0
 URL: %{git0}
 Source0: %{git0}/archive/v%{version}.tar.gz
+Patch0: 0001-1.3.0-CVEs-mega-patch.patch
+Patch1: 0001-1.3-openat2-improve-resilience-on-busy-systems.patch
+Patch2: 0002-1.3-rootfs-re-allow-dangling-symlinks-in-mount-targe.patch
 Provides: oci-runtime
 BuildRequires: golang >= 1.22.4
 BuildRequires: git
@@ -84,6 +87,20 @@ make install install-man install-bash DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} 
 %{_datadir}/bash-completion/completions/%{name}
 
 %changelog
+* Thu Nov 06 2025 Jindrich Novy <jnovy@redhat.com> - 4:1.3.0-4
+- rename errors.go to errors_linux.go
+- Related: RHEL-122400
+
+* Wed Nov 05 2025 Jindrich Novy <jnovy@redhat.com> - 4:1.3.0-3
+- Add relevant patches to CVEs
+- Resolves: RHEL-122400
+
+* Fri Oct 31 2025 Jindrich Novy <jnovy@redhat.com> - 4:1.3.0-2
+- fix CVE-2025-31133 CVE-2025-52565 CVE-2025-52881
+- Resolves: RHEL-122400
+- Resolves: RHEL-122403
+- Resolves: RHEL-122414
+
 * Wed Apr 30 2025 Jindrich Novy <jnovy@redhat.com> - 4:1.3.0-1
 - update to https://github.com/opencontainers/runc/releases/tag/v1.3.0
 - Related: RHEL-80816
