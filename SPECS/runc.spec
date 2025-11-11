@@ -19,8 +19,8 @@ go build -buildmode pie -compiler gc -tags="rpm_crashtraceback libtrust_openssl 
 
 Epoch: 4
 Name: %{repo}
-Version: 1.2.5
-Release: 3%{?dist}
+Version: 1.3.0
+Release: 1%{?dist}
 Summary: CLI for running Open Containers
 # https://fedoraproject.org/wiki/PackagingDrafts/Go#Go_Language_Architectures
 #ExclusiveArch: %%{go_arches}
@@ -30,11 +30,6 @@ ExcludeArch: %{ix86}
 License: ASL 2.0
 URL: %{git0}
 Source0: %{git0}/archive/v%{version}.tar.gz
-Patch0: 0001-Bump-runtime-spec-to-latest-git-HEAD.patch
-Patch1: 0002-runc-exec-implement-CPU-affinity.patch
-Patch2: 0001-1.2.5-1.el9-CVEs-mega-patch.patch
-Patch3: 0001-1.2-openat2-improve-resilience-on-busy-systems.patch
-Patch4: 0002-1.2-rootfs-re-allow-dangling-symlinks-in-mount-targe.patch
 Provides: oci-runtime
 BuildRequires: golang >= 1.22.4
 BuildRequires: git
@@ -89,15 +84,13 @@ make install install-man install-bash DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} 
 %{_datadir}/bash-completion/completions/%{name}
 
 %changelog
-* Wed Nov 05 2025 Jindrich Novy <jnovy@redhat.com> - 4:1.2.5-3
-- Add relevant patches to CVEs
-- Resolves: RHEL-122402
+* Wed Apr 30 2025 Jindrich Novy <jnovy@redhat.com> - 4:1.3.0-1
+- update to https://github.com/opencontainers/runc/releases/tag/v1.3.0
+- Related: RHEL-80816
 
-* Fri Oct 31 2025 Jindrich Novy <jnovy@redhat.com> - 4:1.2.5-2
-- fix CVE-2025-31133 CVE-2025-52565 CVE-2025-52881
-- Resolves: RHEL-122402
-- Resolves: RHEL-122404
-- Resolves: RHEL-122415
+* Tue Mar 18 2025 Jindrich Novy <jnovy@redhat.com> - 4:1.2.6-1
+- update to https://github.com/opencontainers/runc/releases/tag/v1.2.6
+- Related: RHEL-80816
 
 * Tue Feb 18 2025 Jindrich Novy <jnovy@redhat.com> - 4:1.2.5-1
 - update to https://github.com/opencontainers/runc/releases/tag/v1.2.5
