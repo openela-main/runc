@@ -1,7 +1,7 @@
-From 1af672a2635628ca24ce3b5ed3344d316548f1ca Mon Sep 17 00:00:00 2001
+From 73786942b7176eae1e676cf2f78af548f090e418 Mon Sep 17 00:00:00 2001
 From: Kir Kolyshkin <kolyshkin@gmail.com>
 Date: Mon, 21 Oct 2024 15:50:38 -0700
-Subject: [PATCH 2/2] [1.1] runc exec: implement CPU affinity
+Subject: [PATCH 2/2] runc exec: implement CPU affinity
 
 As per
 - https://github.com/opencontainers/runtime-spec/pull/1253
@@ -28,24 +28,28 @@ Because of the above,
    depending on the kernel, therefore we don't test it.
 
 Signed-off-by: Kir Kolyshkin <kolyshkin@gmail.com>
+(cherry picked from commit 57237b31de367a722c5d49088912d57c28c6fb46)
+Signed-off-by: Kir Kolyshkin <kolyshkin@gmail.com>
 ---
- libcontainer/configs/config.go      |  73 ++++++++++++++++++++
+ libcontainer/configs/config.go      |  72 ++++++++++++++++++++
  libcontainer/container_linux.go     |   4 ++
- libcontainer/init_linux.go          |   1 +
- libcontainer/nsenter/nsexec.c       |  36 +++++++++-
+ libcontainer/init_linux.go          |   3 +-
+ libcontainer/nsenter/log.c          |   9 ++-
+ libcontainer/nsenter/log.h          |   3 +
+ libcontainer/nsenter/nsexec.c       |  29 ++++++++
  libcontainer/process.go             |   2 +
- libcontainer/process_linux.go       |  51 +++++++++++++-
+ libcontainer/process_linux.go       |  49 +++++++++++++-
  libcontainer/specconv/spec_linux.go |   5 ++
  tests/integration/cpu_affinity.bats | 101 ++++++++++++++++++++++++++++
  utils_linux.go                      |   6 ++
- 9 files changed, 275 insertions(+), 4 deletions(-)
+ 11 files changed, 277 insertions(+), 6 deletions(-)
  create mode 100644 tests/integration/cpu_affinity.bats
 
 diff --git a/libcontainer/configs/config.go b/libcontainer/configs/config.go
-index 6ebf5ec7..997f2724 100644
+index 22fe0f9b..daffd130 100644
 --- a/libcontainer/configs/config.go
 +++ b/libcontainer/configs/config.go
-@@ -3,11 +3,15 @@ package configs
+@@ -3,8 +3,11 @@ package configs
  import (
  	"bytes"
  	"encoding/json"
@@ -57,19 +61,20 @@ index 6ebf5ec7..997f2724 100644
  	"time"
  
  	"github.com/sirupsen/logrus"
-+	"golang.org/x/sys/unix"
+@@ -225,6 +228,9 @@ type Config struct {
  
- 	"github.com/opencontainers/runc/libcontainer/devices"
- 	"github.com/opencontainers/runtime-spec/specs-go"
-@@ -211,6 +215,75 @@ type Config struct {
- 	// RootlessCgroups is set when unlikely to have the full access to cgroups.
- 	// When RootlessCgroups is set, cgroups errors are ignored.
- 	RootlessCgroups bool `json:"rootless_cgroups,omitempty"`
+ 	// IOPriority is the container's I/O priority.
+ 	IOPriority *IOPriority `json:"io_priority,omitempty"`
 +
 +	// ExecCPUAffinity is CPU affinity for a non-init process to be run in the container.
 +	ExecCPUAffinity *CPUAffinity `json:"exec_cpu_affinity,omitempty"`
-+}
-+
+ }
+ 
+ // Scheduler is based on the Linux sched_setattr(2) syscall.
+@@ -294,6 +300,72 @@ var IOPrioClassMapping = map[specs.IOPriorityClass]int{
+ 
+ type IOPriority = specs.LinuxIOPriority
+ 
 +type CPUAffinity struct {
 +	Initial, Final *unix.CPUSet
 +}
@@ -134,14 +139,16 @@ index 6ebf5ec7..997f2724 100644
 +		Initial: initial,
 +		Final:   final,
 +	}, nil
- }
- 
++}
++
  type (
+ 	HookName string
+ 	HookList []Hook
 diff --git a/libcontainer/container_linux.go b/libcontainer/container_linux.go
-index 40b332f9..68b6a74f 100644
+index c0211617..1fc590a5 100644
 --- a/libcontainer/container_linux.go
 +++ b/libcontainer/container_linux.go
-@@ -692,6 +692,7 @@ func (c *linuxContainer) newInitConfig(process *Process) *initConfig {
+@@ -692,6 +692,7 @@ func (c *Container) newInitConfig(process *Process) *initConfig {
  		AppArmorProfile:  c.config.AppArmorProfile,
  		ProcessLabel:     c.config.ProcessLabel,
  		Rlimits:          c.config.Rlimits,
@@ -149,7 +156,7 @@ index 40b332f9..68b6a74f 100644
  		CreateConsole:    process.ConsoleSocket != nil,
  		ConsoleWidth:     process.ConsoleWidth,
  		ConsoleHeight:    process.ConsoleHeight,
-@@ -708,6 +709,9 @@ func (c *linuxContainer) newInitConfig(process *Process) *initConfig {
+@@ -708,6 +709,9 @@ func (c *Container) newInitConfig(process *Process) *initConfig {
  	if len(process.Rlimits) > 0 {
  		cfg.Rlimits = process.Rlimits
  	}
@@ -160,43 +167,80 @@ index 40b332f9..68b6a74f 100644
  		cfg.Cgroup2Path = c.cgroupManager.Path("")
  	}
 diff --git a/libcontainer/init_linux.go b/libcontainer/init_linux.go
-index d9f18139..1f8562ec 100644
+index 1eb0279d..eddbfba6 100644
 --- a/libcontainer/init_linux.go
 +++ b/libcontainer/init_linux.go
-@@ -70,6 +70,7 @@ type initConfig struct {
+@@ -72,6 +72,7 @@ type initConfig struct {
  	RootlessCgroups  bool                  `json:"rootless_cgroups,omitempty"`
  	SpecState        *specs.State          `json:"spec_state,omitempty"`
  	Cgroup2Path      string                `json:"cgroup2_path,omitempty"`
 +	CPUAffinity      *configs.CPUAffinity  `json:"cpu_affinity,omitempty"`
  }
  
- type initer interface {
-diff --git a/libcontainer/nsenter/nsexec.c b/libcontainer/nsenter/nsexec.c
-index 2d224bab..6f70aa87 100644
---- a/libcontainer/nsenter/nsexec.c
-+++ b/libcontainer/nsenter/nsexec.c
-@@ -149,13 +149,18 @@ int setns(int fd, int nstype)
+ // Init is part of "runc init" implementation.
+@@ -151,7 +152,7 @@ func startInitialization() (retErr error) {
+ 
+ 	logrus.SetOutput(logPipe)
+ 	logrus.SetFormatter(new(logrus.JSONFormatter))
+-	logrus.Debug("child process in init()")
++	logrus.Debugf("child process in init()")
+ 
+ 	// Only init processes have FIFOFD.
+ 	var fifoFile *os.File
+diff --git a/libcontainer/nsenter/log.c b/libcontainer/nsenter/log.c
+index 086b5398..72774cb0 100644
+--- a/libcontainer/nsenter/log.c
++++ b/libcontainer/nsenter/log.c
+@@ -31,6 +31,11 @@ void setup_logpipe(void)
+ 	loglevel = i;
  }
- #endif
  
 +bool log_enabled_for(int level)
 +{
 +	return (logfd >= 0 && level <= loglevel);
 +}
 +
- static void write_log(int level, const char *format, ...)
- {
- 	char *message = NULL, *stage = NULL, *json = NULL;
+ /* Defined in nsexec.c */
+ extern int current_stage;
+ 
+@@ -40,8 +45,8 @@ void write_log(int level, const char *format, ...)
  	va_list args;
  	int ret;
  
 -	if (logfd < 0 || level > loglevel)
+-		goto out;
 +	if (!log_enabled_for(level))
- 		goto out;
++		return;
  
  	va_start(args, format);
-@@ -851,6 +856,25 @@ void try_unshare(int flags, const char *msg)
- 	bail("failed to unshare %s", msg);
+ 	ret = vasprintf(&message, format, args);
+diff --git a/libcontainer/nsenter/log.h b/libcontainer/nsenter/log.h
+index 1fe95a11..3e18de68 100644
+--- a/libcontainer/nsenter/log.h
++++ b/libcontainer/nsenter/log.h
+@@ -1,6 +1,7 @@
+ #ifndef NSENTER_LOG_H
+ #define NSENTER_LOG_H
+ 
++#include <stdbool.h>
+ #include <stdio.h>
+ 
+ /*
+@@ -20,6 +21,8 @@
+  */
+ void setup_logpipe(void);
+ 
++bool log_enabled_for(int level);
++
+ void write_log(int level, const char *format, ...) __attribute__((format(printf, 2, 3)));
+ 
+ extern int logfd;
+diff --git a/libcontainer/nsenter/nsexec.c b/libcontainer/nsenter/nsexec.c
+index 565b2ca2..aa4976d6 100644
+--- a/libcontainer/nsenter/nsexec.c
++++ b/libcontainer/nsenter/nsexec.c
+@@ -558,6 +558,25 @@ static void update_timens_offsets(pid_t pid, char *map, size_t map_len)
+ 		bail("failed to update /proc/%d/timens_offsets", pid);
  }
  
 +void print_cpu_affinity()
@@ -221,7 +265,7 @@ index 2d224bab..6f70aa87 100644
  void nsexec(void)
  {
  	int pipenum;
-@@ -892,6 +916,16 @@ void nsexec(void)
+@@ -584,6 +603,16 @@ void nsexec(void)
  
  	write_log(DEBUG, "=> nsexec container setup");
  
@@ -239,31 +283,23 @@ index 2d224bab..6f70aa87 100644
  	nl_parse(pipenum, &config);
  
 diff --git a/libcontainer/process.go b/libcontainer/process.go
-index 8a5d340d..99167274 100644
+index 114b3f2b..5339583f 100644
 --- a/libcontainer/process.go
 +++ b/libcontainer/process.go
-@@ -89,6 +89,8 @@ type Process struct {
- 	//
- 	// For cgroup v2, the only key allowed is "".
- 	SubCgroupPaths map[string]string
+@@ -102,6 +102,8 @@ type Process struct {
+ 	Scheduler *configs.Scheduler
+ 
+ 	IOPriority *configs.IOPriority
 +
 +	CPUAffinity *configs.CPUAffinity
  }
  
  // Wait waits for the process to exit.
 diff --git a/libcontainer/process_linux.go b/libcontainer/process_linux.go
-index 0d9ceb9c..3b48ae76 100644
+index fcbb54a3..477c8a77 100644
 --- a/libcontainer/process_linux.go
 +++ b/libcontainer/process_linux.go
-@@ -9,6 +9,7 @@ import (
- 	"os"
- 	"os/exec"
- 	"path/filepath"
-+	"runtime"
- 	"strconv"
- 	"time"
- 
-@@ -78,12 +79,52 @@ func (p *setnsProcess) signal(sig os.Signal) error {
+@@ -122,6 +122,46 @@ func (p *setnsProcess) signal(sig os.Signal) error {
  	return unix.Kill(p.pid(), s)
  }
  
@@ -308,18 +344,20 @@ index 0d9ceb9c..3b48ae76 100644
 +}
 +
  func (p *setnsProcess) start() (retErr error) {
- 	defer p.messageSockPair.parent.Close()
--	// get the "before" value of oom kill count
-+	// Get the "before" value of oom kill count.
+ 	defer p.comm.closeParent()
+ 
+@@ -133,8 +173,8 @@ func (p *setnsProcess) start() (retErr error) {
+ 
+ 	// get the "before" value of oom kill count
  	oom, _ := p.manager.OOMKillCount()
 -	err := p.cmd.Start()
--	// close the write-side of the pipes (controlled by child)
+-	// close the child-side of the pipes (controlled by child)
 +	err := p.startWithCPUAffinity()
 +	// Close the child-side of the pipes (controlled by child).
- 	p.messageSockPair.child.Close()
- 	p.logFilePair.child.Close()
+ 	p.comm.closeChild()
  	if err != nil {
-@@ -143,6 +184,10 @@ func (p *setnsProcess) start() (retErr error) {
+ 		return fmt.Errorf("error starting setns process: %w", err)
+@@ -184,6 +224,10 @@ func (p *setnsProcess) start() (retErr error) {
  			}
  		}
  	}
@@ -330,13 +368,21 @@ index 0d9ceb9c..3b48ae76 100644
  	if p.intelRdtPath != "" {
  		// if Intel RDT "resource control" filesystem path exists
  		_, err := os.Stat(p.intelRdtPath)
+@@ -193,7 +237,6 @@ func (p *setnsProcess) start() (retErr error) {
+ 			}
+ 		}
+ 	}
+-
+ 	if err := utils.WriteJSON(p.comm.initSockParent, p.config); err != nil {
+ 		return fmt.Errorf("error writing config to pipe: %w", err)
+ 	}
 diff --git a/libcontainer/specconv/spec_linux.go b/libcontainer/specconv/spec_linux.go
-index 7dbfb869..b59e0d59 100644
+index 95ada499..2d0db342 100644
 --- a/libcontainer/specconv/spec_linux.go
 +++ b/libcontainer/specconv/spec_linux.go
-@@ -493,6 +493,11 @@ func CreateLibcontainerConfig(opts *CreateOpts) (*configs.Config, error) {
- 				Ambient:     spec.Process.Capabilities.Ambient,
- 			}
+@@ -556,6 +556,11 @@ func CreateLibcontainerConfig(opts *CreateOpts) (*configs.Config, error) {
+ 			ioPriority := *spec.Process.IOPriority
+ 			config.IOPriority = &ioPriority
  		}
 +		config.ExecCPUAffinity, err = configs.ConvertCPUAffinity(spec.Process.ExecCPUAffinity)
 +		if err != nil {
@@ -454,10 +500,10 @@ index 00000000..f6adfa2a
 +	[[ "$output" == *"Cpus_allowed_list:	$final"* ]] # Mind the literal tab.
 +}
 diff --git a/utils_linux.go b/utils_linux.go
-index 60d534e8..30204133 100644
+index feb6ef80..013dbcf4 100644
 --- a/utils_linux.go
 +++ b/utils_linux.go
-@@ -109,6 +109,12 @@ func newProcess(p specs.Process) (*libcontainer.Process, error) {
+@@ -90,6 +90,12 @@ func newProcess(p specs.Process) (*libcontainer.Process, error) {
  		}
  		lp.Rlimits = append(lp.Rlimits, rl)
  	}

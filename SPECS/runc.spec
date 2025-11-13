@@ -1,8 +1,5 @@
 %global with_check 0
 
-%global _find_debuginfo_dwz_opts %{nil}
-%global _dwz_low_mem_die_limit 0
-
 %if 0%{?rhel} > 7 && ! 0%{?fedora}
 %define gobuild(o:) \
 go build -buildmode pie -compiler gc -tags="rpm_crashtraceback libtrust_openssl ${BUILDTAGS:-}" -ldflags "${LDFLAGS:-} -linkmode=external -compressdwarf=false -B 0x$(head -c20 /dev/urandom|od -An -tx1|tr -d ' \\n') -extldflags '%__global_ldflags'" -a -v %{?**};
@@ -20,10 +17,10 @@ go build -buildmode pie -compiler gc -tags="rpm_crashtraceback libtrust_openssl 
 %global import_path %{provider}.%{provider_tld}/%{project}/%{repo}
 %global git0 https://%{import_path}
 
-Epoch: 1
+Epoch: 4
 Name: %{repo}
-Version: 1.1.12
-Release: 6%{?dist}
+Version: 1.2.5
+Release: 2%{?dist}
 Summary: CLI for running Open Containers
 # https://fedoraproject.org/wiki/PackagingDrafts/Go#Go_Language_Architectures
 #ExclusiveArch: %%{go_arches}
@@ -33,15 +30,21 @@ ExcludeArch: %{ix86}
 License: ASL 2.0
 URL: %{git0}
 Source0: %{git0}/archive/v%{version}.tar.gz
-Patch0: 0001-1.1-Bump-runtime-spec-to-latest-git-HEAD.patch
-Patch1: 0002-1.1-runc-exec-implement-CPU-affinity.patch
+Patch0: 0001-Bump-runtime-spec-to-latest-git-HEAD.patch
+Patch1: 0002-runc-exec-implement-CPU-affinity.patch
+Patch2: 0001-1.2.5-1.el9-CVEs-mega-patch.patch
+Patch3: 0001-1.2-openat2-improve-resilience-on-busy-systems.patch
+Patch4: 0002-1.2-rootfs-re-allow-dangling-symlinks-in-mount-targe.patch
+Patch5: 0001-1.2-rootfs-only-set-mode-for-tmpfs-mount-if-target-alrea.patch
 Provides: oci-runtime
-BuildRequires: golang >= 1.21.4
+BuildRequires: golang >= 1.22.4
 BuildRequires: git
 BuildRequires: /usr/bin/go-md2man
 BuildRequires: libseccomp-devel >= 2.5
+BuildRequires: container-selinux >= 2.224.0
 Requires: libseccomp >= 2.5
-Requires: criu
+Recommends: criu
+Requires: container-selinux >= 2.224.0
 
 %description
 The runc command can be used to start containers which are packaged
@@ -63,7 +66,7 @@ pushd GOPATH/src/%{import_path}
 export GO111MODULE=off
 export GOPATH=%{gopath}:$(pwd)/GOPATH
 export CGO_CFLAGS="%{optflags} -D_GNU_SOURCE -D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64"
-export BUILDTAGS="selinux seccomp no_openssl"
+export BUILDTAGS="selinux seccomp runc_dmz_selinux_nocompat no_openssl"
 export LDFLAGS="-X main.gitCommit= -X main.version=%{version}"
 %gobuild -o %{name} %{import_path}
 
@@ -87,6 +90,14 @@ make install install-man install-bash DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} 
 %{_datadir}/bash-completion/completions/%{name}
 
 %changelog
+* Wed Nov 12 2025 Jindrich Novy <jnovy@redhat.com> - 4:1.2.5-2
+- fix permission regression
+- Related: RHEL-122384
+
+* Fri Nov 07 2025 Jindrich Novy <jnovy@redhat.com> - 4:1.2.5-1
+- fix CVE-2025-31133 CVE-2025-52565 CVE-2025-52881
+- Resolves: RHEL-122384
+
 * Mon Jan 20 2025 Jindrich Novy <jnovy@redhat.com> - 1:1.1.12-6
 - Add CPU affinity feature from Kir Kolishkin
 - Resolves: RHEL-74865
