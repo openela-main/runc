@@ -19,7 +19,7 @@ go build -buildmode pie -compiler gc -tags="rpm_crashtraceback libtrust_openssl 
 
 Epoch: 4
 Name: %{repo}
-Version: 1.2.5
+Version: 1.2.9
 Release: 2%{?dist}
 Summary: CLI for running Open Containers
 # https://fedoraproject.org/wiki/PackagingDrafts/Go#Go_Language_Architectures
@@ -30,12 +30,6 @@ ExcludeArch: %{ix86}
 License: ASL 2.0
 URL: %{git0}
 Source0: %{git0}/archive/v%{version}.tar.gz
-Patch0: 0001-Bump-runtime-spec-to-latest-git-HEAD.patch
-Patch1: 0002-runc-exec-implement-CPU-affinity.patch
-Patch2: 0001-1.2.5-1.el9-CVEs-mega-patch.patch
-Patch3: 0001-1.2-openat2-improve-resilience-on-busy-systems.patch
-Patch4: 0002-1.2-rootfs-re-allow-dangling-symlinks-in-mount-targe.patch
-Patch5: 0001-1.2-rootfs-only-set-mode-for-tmpfs-mount-if-target-alrea.patch
 Provides: oci-runtime
 BuildRequires: golang >= 1.22.4
 BuildRequires: git
@@ -90,6 +84,10 @@ make install install-man install-bash DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} 
 %{_datadir}/bash-completion/completions/%{name}
 
 %changelog
+* Thu Dec 04 2025 Jindrich Novy <jnovy@redhat.com> - 4:1.2.9-2
+- update to https://github.com/opencontainers/runc/releases/tag/v1.2.9
+- Resolves: RHEL-132818
+
 * Wed Nov 12 2025 Jindrich Novy <jnovy@redhat.com> - 4:1.2.5-2
 - fix permission regression
 - Related: RHEL-122384
