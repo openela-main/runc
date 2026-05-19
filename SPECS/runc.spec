@@ -19,8 +19,8 @@ go build -buildmode pie -compiler gc -tags="rpm_crashtraceback libtrust_openssl 
 
 Epoch: 4
 Name: %{repo}
-Version: 1.4.0
-Release: 2%{?dist}
+Version: 1.4.2
+Release: 1%{?dist}
 Summary: CLI for running Open Containers
 # https://fedoraproject.org/wiki/PackagingDrafts/Go#Go_Language_Architectures
 #ExclusiveArch: %%{go_arches}
@@ -31,7 +31,7 @@ License: ASL 2.0
 URL: %{git0}
 Source0: %{git0}/archive/v%{version}.tar.gz
 Provides: oci-runtime
-BuildRequires: golang >= 1.22.4
+BuildRequires: golang >= 1.24
 BuildRequires: git
 BuildRequires: /usr/bin/go-md2man
 BuildRequires: libseccomp-devel >= 2.5
@@ -84,31 +84,29 @@ make install install-man install-bash DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} 
 %{_datadir}/bash-completion/completions/%{name}
 
 %changelog
-* Thu Feb 19 2026 Jindrich Novy <jnovy@redhat.com> - 4:1.4.0-2
-- Rebuild for new golang to address CVE-2025-68121
-- Resolves: RHEL-149630
+* Tue Apr 07 2026 Kir Kolyshkin <kir@redhat.com> - 4:1.4.2-1
+- Update to https://github.com/opencontainers/runc/releases/tag/v1.4.2
+- Resolves: RHEL-165497
+
+* Mon Feb 23 2026 Jindrich Novy <jnovy@redhat.com> - 4:1.4.0-2
+- Rebuild for new golang to address CVE-2025-61726
+- Resolves: RHEL-146111
 
 * Thu Dec 04 2025 Jindrich Novy <jnovy@redhat.com> - 4:1.4.0-1
 - update to https://github.com/opencontainers/runc/releases/tag/v1.4.0
-- Resolves: RHEL-132800
+- Resolves: RHEL-132769
 
-* Tue Nov 11 2025 Jindrich Novy <jnovy@redhat.com> - 4:1.3.0-5
-- fix premission regression
-- Related: RHEL-122400
+* Wed Nov 05 2025 Jindrich Novy <jnovy@redhat.com> - 4:1.3.3-1
+- update to https://github.com/opencontainers/runc/releases/tag/v1.3.3
+- Related: RHEL-111919
 
-* Thu Nov 06 2025 Jindrich Novy <jnovy@redhat.com> - 4:1.3.0-4
-- rename errors.go to errors_linux.go
-- Related: RHEL-122400
+* Wed Oct 29 2025 Jindrich Novy <jnovy@redhat.com> - 4:1.3.2-1
+- update to https://github.com/opencontainers/runc/releases/tag/v1.3.2
+- Resolves: RHEL-124800
 
-* Wed Nov 05 2025 Jindrich Novy <jnovy@redhat.com> - 4:1.3.0-3
-- Add relevant patches to CVEs
-- Resolves: RHEL-122400
-
-* Fri Oct 31 2025 Jindrich Novy <jnovy@redhat.com> - 4:1.3.0-2
-- fix CVE-2025-31133 CVE-2025-52565 CVE-2025-52881
-- Resolves: RHEL-122400
-- Resolves: RHEL-122403
-- Resolves: RHEL-122414
+* Tue Sep 16 2025 Jindrich Novy <jnovy@redhat.com> - 4:1.3.1-1
+- update to https://github.com/opencontainers/runc/releases/tag/v1.3.1
+- Related: RHEL-111919
 
 * Wed Apr 30 2025 Jindrich Novy <jnovy@redhat.com> - 4:1.3.0-1
 - update to https://github.com/opencontainers/runc/releases/tag/v1.3.0
