@@ -20,7 +20,7 @@ go build -buildmode pie -compiler gc -tags="rpm_crashtraceback libtrust_openssl 
 Epoch: 4
 Name: %{repo}
 Version: 1.2.9
-Release: 4%{?dist}
+Release: 6%{?dist}
 Summary: CLI for running Open Containers
 # https://fedoraproject.org/wiki/PackagingDrafts/Go#Go_Language_Architectures
 #ExclusiveArch: %%{go_arches}
@@ -84,6 +84,14 @@ make install install-man install-bash DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} 
 %{_datadir}/bash-completion/completions/%{name}
 
 %changelog
+* Tue Sep 01 2026 Jindrich Novy <jnovy@redhat.com> - 4:1.2.9-6
+- rebuild with updated Go to fix CVE-2026-42499
+- Resolves: RHEL-241537 RHEL-241905 RHEL-242338
+
+* Thu Aug 20 2026 Jindrich Novy <jnovy@redhat.com> - 4:1.2.9-5
+- rebuild with Go 1.25.11 to fix CVE-2026-33818, CVE-2026-56853, CVE-2026-56858,
+  CVE-2026-56859, CVE-2026-56860, CVE-2026-56862
+
 * Tue Feb 17 2026 Jindrich Novy <jnovy@redhat.com> - 4:1.2.9-4
 - rebuild for CVE-2025-68121
 - Resolves: RHEL-149266
