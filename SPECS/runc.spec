@@ -20,7 +20,7 @@ go build -buildmode pie -compiler gc -tags="rpm_crashtraceback libtrust_openssl 
 Epoch: 4
 Name: %{repo}
 Version: 1.2.9
-Release: 6%{?dist}
+Release: 9%{?dist}
 Summary: CLI for running Open Containers
 # https://fedoraproject.org/wiki/PackagingDrafts/Go#Go_Language_Architectures
 #ExclusiveArch: %%{go_arches}
@@ -58,7 +58,7 @@ popd
 
 pushd GOPATH/src/%{import_path}
 export GO111MODULE=off
-export GOPATH=%{gopath}:$(pwd)/GOPATH
+export GOPATH=%{_builddir}/%{name}-%{version}/GOPATH:%{gopath}
 export CGO_CFLAGS="%{optflags} -D_GNU_SOURCE -D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64"
 export BUILDTAGS="selinux seccomp runc_dmz_selinux_nocompat no_openssl"
 export LDFLAGS="-X main.gitCommit= -X main.version=%{version}"
@@ -84,6 +84,18 @@ make install install-man install-bash DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} 
 %{_datadir}/bash-completion/completions/%{name}
 
 %changelog
+* Fri Oct 23 2026 Jindrich Novy <jnovy@redhat.com> - 4:1.2.9-9
+- Fix GOPATH to use absolute path for Go 1.26.x FIPS module compatibility
+- Resolves: RHEL-287598
+
+* Fri Oct 23 2026 Jindrich Novy <jnovy@redhat.com> - 4:1.2.9-8
+- Fix GOPATH ordering for Go 1.26.x compatibility
+- Resolves: RHEL-287598
+
+* Thu Oct 22 2026 Jindrich Novy <jnovy@redhat.com> - 4:1.2.9-7
+- Rebuild for CVE-2026-111943
+- Resolves: RHEL-287598
+
 * Tue Sep 01 2026 Jindrich Novy <jnovy@redhat.com> - 4:1.2.9-6
 - rebuild with updated Go to fix CVE-2026-42499
 - Resolves: RHEL-241537 RHEL-241905 RHEL-242338
