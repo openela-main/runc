@@ -31,7 +31,7 @@ License: ASL 2.0
 URL: %{git0}
 Source0: %{git0}/archive/v%{version}.tar.gz
 Provides: oci-runtime
-BuildRequires: golang >= 1.24
+BuildRequires: golang >= 1.22.4
 BuildRequires: git
 BuildRequires: /usr/bin/go-md2man
 BuildRequires: libseccomp-devel >= 2.5
@@ -84,17 +84,17 @@ make install install-man install-bash DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} 
 %{_datadir}/bash-completion/completions/%{name}
 
 %changelog
-* Mon Sep 21 2026 Jindrich Novy <jnovy@redhat.com> - 4:1.4.2-3
-- rebuild for CVE-2026-56860
-- Resolves: RHEL-241703
+* Tue Sep 01 2026 Jindrich Novy <jnovy@redhat.com> - 4:1.4.2-3
+- Rebuild for CVE fixes in Go standard library
+- Resolves: RHEL-241842
 
-* Sun May 04 2026 Jindrich Novy <jnovy@redhat.com> - 4:1.4.2-2
-- Rebuild for CVE-2026-25679
-- Resolves: RHEL-158787
+* Tue Aug 18 2026 Jindrich Novy <jnovy@redhat.com> - 4:1.4.2-2
+- Rebuild for golang-1.26.6 CVE fixes (CVE-2025-68121 CVE-2026-33811
+  CVE-2026-56860) - Resolves: RHEL-164488 RHEL-187337 RHEL-241842
 
-* Tue Apr 07 2026 Kir Kolyshkin <kir@redhat.com> - 4:1.4.2-1
-- Update to https://github.com/opencontainers/runc/releases/tag/v1.4.2
-- Resolves: RHEL-165497
+* Fri Apr 24 2026 Jindrich Novy <jnovy@redhat.com> - 4:1.4.2-1
+- update to https://github.com/opencontainers/runc/releases/tag/v1.4.2
+- Resolves: RHEL-164488
 
 * Mon Feb 23 2026 Jindrich Novy <jnovy@redhat.com> - 4:1.4.0-2
 - Rebuild for new golang to address CVE-2025-61726
